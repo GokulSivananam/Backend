@@ -2,9 +2,10 @@ const User = require("../models/User");
 const Event = require("../models/Event");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
 exports.register = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, role } = req.body;
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     return res.status(400).json({
@@ -13,13 +14,13 @@ exports.register = async (req, res) => {
     });
   }
   const hashedPassword = await bcrypt.hash(password, 10);
-  const user = new User({ name, email, password: hashedPassword });
+  const user = new User({ name, email, password: hashedPassword, role: role || 'user' });
   await user.save();
   const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
   res.status(201).json({
     status: "success",
     token,
-    data: { id: user._id, name, email }
+    data: { id: user._id, name, email, role: user.role }
   });
 };
 
@@ -36,7 +37,7 @@ exports.login = async (req, res) => {
   res.status(200).json({
     status: "success",
     token,
-    data: { id: user._id, name: user.name, email: user.email }
+    data: { id: user._id, name: user.name, email: user.email, role: user.role }
   });
 };
 
@@ -64,13 +65,38 @@ exports.getEventById = async (req, res) => {
 };
 
 exports.createEvent = async (req, res) => {
-  const { title, date, time, location, description, capacity } = req.body;
-  const event = new Event({ title, date, time, location, description, capacity });
-  await event.save();
-  res.status(201).json({
-    status: "success",
-    data: event
-  });
+  try {
+    console.log("Received data:", req.body);
+    console.log("MongoDB connection state:", mongoose.connection.readyState);
+    const { title, date, time, location, description, capacity } = req.body;
+    
+    if (!title || !date || !time || !location || !description || !capacity) {
+      return res.status(400).json({
+        status: "error",
+        message: "All fields are required"
+      });
+    }
+    
+    const event = new Event({ title, date, time, location, description, capacity });
+    console.log("Event object created:", event);
+    
+    const savedEvent = await event.save();
+    console.log("Event saved successfully:", savedEvent);
+    
+    const count = await Event.countDocuments();
+    console.log("Total events in DB:", count);
+    
+    res.status(201).json({
+      status: "success",
+      data: savedEvent
+    });
+  } catch (error) {
+    console.error("Error creating event:", error);
+    res.status(400).json({
+      status: "error",
+      message: error.message
+    });
+  }
 };
 
 exports.updateEvent = async (req, res) => {
